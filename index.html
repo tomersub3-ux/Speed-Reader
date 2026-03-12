@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Speed Reader</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #121212;
+      --surface: #1e1e1e;
+      --text: #f0f0f0;
+      --subtext: #aaa;
+      --border: #333;
+      --accent: #e03030;
+      --btn-bg: #f0f0f0;
+      --btn-text: #121212;
+      --btn-secondary: #2a2a2a;
+      --btn-secondary-text: #f0f0f0;
+      --progress-bg: #333;
+      --progress-fill: #f0f0f0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Arial Hebrew', 'David', 'Noto Sans Hebrew', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── SETUP SCREEN ── */
+    #setup-screen {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 32px 16px 32px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    h1 { font-size: 1.5rem; font-weight: 700; }
+
+    .toggles { display: flex; gap: 10px; }
+
+    .toggle-btn {
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .toggle-btn.active {
+      background: var(--btn-bg);
+      color: var(--btn-text);
+      border-color: var(--btn-bg);
+    }
+
+    textarea {
+      width: 100%;
+      flex: 1;
+      min-height: 160px;
+      padding: 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.95rem;
+      resize: none;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: var(--btn-bg); }
+
+    .upload-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .upload-btn {
+      flex: 1;
+      padding: 11px;
+      border: 1.5px dashed var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--subtext);
+      font-size: 0.9rem;
+      cursor: pointer;
+      text-align: center;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .upload-btn:hover { border-color: var(--text); color: var(--text); }
+
+    input[type="file"] { display: none; }
+
+    #file-name {
+      margin-top: 8px;
+      font-size: 0.82rem;
+      color: var(--subtext);
+      min-height: 1.2em;
+    }
+
+    .start-btn {
+      display: block;
+      width: 100%;
+      margin-top: 20px;
+      padding: 15px;
+      background: var(--btn-bg);
+      color: var(--btn-text);
+      border: none;
+      border-radius: 10px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .start-btn:hover:not(:disabled) { opacity: 0.85; }
+    .start-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* ── READER SCREEN ── */
+    #reader-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      height: 100svh;
+      overflow: hidden;
+      padding: 20px 16px 16px;
+    }
+    #reader-screen.visible { display: flex; }
+
+    .reader-main {
+      flex: 1;
+      width: 100%;
+      max-width: 640px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 0;
+    }
+
+    .word-zone {
+      flex: 1;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .controls-area {
+      flex: 0 0 auto;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding-bottom: 12px;
+    }
+
+    .reader-top-bar {
+      width: 100%;
+      max-width: 640px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: var(--subtext);
+      font-size: 0.9rem;
+      cursor: pointer;
+      padding: 4px 0;
+    }
+    .back-btn:hover { color: var(--text); }
+
+    .reader-toggles { display: flex; gap: 8px; }
+
+    /* Word box */
+    #word-box {
+      display: flex;
+      align-items: center;
+      /* no justify-content: the flex children handle alignment */
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      margin: 0 auto;
+      /* size set dynamically via JS */
+      transition: width 0.15s, height 0.15s;
+      overflow: hidden;
+      padding: 0 6px;
+    }
+
+    /* ORP layout: three spans, ORP char pinned to center */
+    #word-box .w-left {
+      flex: 1;
+      text-align: end;   /* right in LTR, left in RTL — always toward center */
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    #word-box .w-orp {
+      flex: 0 0 auto;
+      font-weight: 700;
+      white-space: nowrap;
+      color: var(--accent);
+    }
+    #word-box .w-right {
+      flex: 1;
+      text-align: start; /* left in LTR, right in RTL — always toward center */
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    /* when ORP is off, just show centered word */
+    #word-box .w-plain {
+      flex: 1;
+      text-align: center;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    #word-box .w-left,
+    #word-box .w-orp,
+    #word-box .w-right,
+    #word-box .w-plain {
+      letter-spacing: 0.01em;
+      /* font-size set via JS */
+    }
+
+    /* Progress */
+    .progress-section {
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--subtext);
+      margin-bottom: 6px;
+    }
+
+    .progress-bar-track {
+      width: 100%;
+      height: 8px;
+      background: var(--progress-bg);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    #progress-bar-fill {
+      height: 100%;
+      background: var(--progress-fill);
+      border-radius: 3px;
+      transition: width 0.1s;
+      width: 0%;
+    }
+
+    /* Controls */
+    .controls {
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .ctrl-btn {
+      padding: 12px 22px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: var(--btn-secondary);
+      color: var(--btn-secondary-text);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      min-width: 52px;
+    }
+    .ctrl-btn:hover { opacity: 0.75; }
+    .btn-label {
+      display: block;
+      font-size: 0.62rem;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      margin-top: 1px;
+      opacity: 0.75;
+    }
+    .ctrl-btn.primary {
+      background: var(--btn-bg);
+      color: var(--btn-text);
+      border-color: var(--btn-bg);
+      padding: 12px 36px;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .slider-label {
+      font-size: 0.82rem;
+      color: var(--subtext);
+      min-width: 36px;
+      text-align: right;
+    }
+
+    .slider-value {
+      font-size: 0.82rem;
+      color: var(--text);
+      font-weight: 600;
+      min-width: 52px;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      accent-color: var(--btn-bg);
+      cursor: pointer;
+    }
+
+
+    /* Error */
+    #error-msg {
+      color: var(--accent);
+      font-size: 0.88rem;
+      margin-top: 8px;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ SETUP SCREEN ══ -->
+<div id="setup-screen">
+  <div class="top-bar">
+    <h1>Speed Reader</h1>
+    <div class="toggles">
+      <button class="toggle-btn" id="orp-toggle-setup">ORP off</button>
+    </div>
+  </div>
+
+  <textarea id="text-input" placeholder="Paste or type your text here…"></textarea>
+  <div id="error-msg"></div>
+
+  <div class="upload-row">
+    <label class="upload-btn" for="txt-upload">📄 Upload TXT</label>
+    <input type="file" id="txt-upload" accept=".txt,text/plain" />
+
+    <label class="upload-btn" for="pdf-upload">📑 Upload PDF</label>
+    <input type="file" id="pdf-upload" accept=".pdf,application/pdf" />
+  </div>
+  <div id="file-name"></div>
+
+  <button class="start-btn" id="start-btn" disabled>Start Reading</button>
+</div>
+
+<!-- ══ READER SCREEN ══ -->
+<div id="reader-screen">
+  <div class="reader-top-bar">
+    <button class="back-btn" id="back-btn">← Back</button>
+    <div class="reader-toggles">
+      <button class="toggle-btn" id="orp-toggle-reader">ORP off</button>
+    </div>
+  </div>
+
+  <div class="reader-main">
+    <div class="word-zone">
+      <div id="word-box"></div>
+    </div>
+
+    <div class="controls-area">
+      <div class="progress-section">
+        <div class="progress-label">
+          <span id="progress-text">0 / 0</span>
+          <span id="wpm-display" style="display:none">300 WPM</span>
+        </div>
+        <div class="progress-bar-track">
+          <div id="progress-bar-fill"></div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="btn-row">
+          <button class="ctrl-btn" id="restart-btn" title="Restart">↩<span class="btn-label">Reset</span></button>
+          <button class="ctrl-btn" id="skip-back-btn" title="Back 10 words">«<span class="btn-label">−10</span></button>
+          <button class="ctrl-btn primary" id="play-pause-btn">▶ Play</button>
+          <button class="ctrl-btn" id="skip-fwd-btn" title="Forward 10 words">»<span class="btn-label">+10</span></button>
+        </div>
+
+        <div class="slider-row">
+          <span class="slider-label">Speed</span>
+          <input type="range" id="wpm-slider" min="100" max="1000" step="10" value="300" />
+          <span class="slider-value" id="wpm-value">300 WPM</span>
+        </div>
+
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── PDF.js worker ──
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  // ── State ──
+  let words = [];
+  let longestWord = '';      // widest whole word (for non-ORP mode)
+  let widestLeftTail = '';   // widest before-ORP part across all words
+  let widestRightTail = '';  // widest after-ORP part across all words
+  let index = 0;
+  let playing = false;
+  let timer = null;
+  let wpm = 300;
+  let fontSize = 56;
+  let orpOn = false;
+
+  // ── DOM refs ──
+  const setupScreen   = document.getElementById('setup-screen');
+  const readerScreen  = document.getElementById('reader-screen');
+  const textInput     = document.getElementById('text-input');
+  const txtUpload     = document.getElementById('txt-upload');
+  const pdfUpload     = document.getElementById('pdf-upload');
+  const fileNameEl    = document.getElementById('file-name');
+  const errorMsg      = document.getElementById('error-msg');
+  const startBtn      = document.getElementById('start-btn');
+  const backBtn       = document.getElementById('back-btn');
+  const wordBox       = document.getElementById('word-box');
+  const progressText  = document.getElementById('progress-text');
+  const wpmDisplay    = document.getElementById('wpm-display');
+  const progressFill  = document.getElementById('progress-bar-fill');
+  const playPauseBtn  = document.getElementById('play-pause-btn');
+  const restartBtn    = document.getElementById('restart-btn');
+  const skipBackBtn   = document.getElementById('skip-back-btn');
+  const skipFwdBtn    = document.getElementById('skip-fwd-btn');
+  const wpmSlider     = document.getElementById('wpm-slider');
+  const wpmValue      = document.getElementById('wpm-value');
+
+  const orpToggles  = [document.getElementById('orp-toggle-setup'),  document.getElementById('orp-toggle-reader')];
+
+  // ── Persist settings ──
+  function loadSettings() {
+    orpOn  = localStorage.getItem('orpOn')  === 'true';
+    wpm    = parseInt(localStorage.getItem('wpm')      || '300');
+    wpmSlider.value = wpm;
+    applyOrp();
+    applyFont();
+    wpmValue.textContent = wpm + ' WPM';
+    wpmDisplay.textContent = wpm + ' WPM';
+  }
+
+  function applyOrp() {
+    orpToggles.forEach(b => { b.textContent = orpOn ? 'ORP on' : 'ORP off'; b.classList.toggle('active', orpOn); });
+    localStorage.setItem('orpOn', orpOn);
+    if (words.length) {
+      // Box size depends on ORP mode, so recompute max and re-apply
+      fontSize = computeMaxFontSize();
+      applyFont();
+      showWord();
+    }
+  }
+
+  // Measure rendered pixel width of text at a given font size
+  function measureAt(text, sz) {
+    const probe = document.createElement('span');
+    probe.style.cssText = `position:absolute;top:-9999px;left:-9999px;visibility:hidden;white-space:nowrap;font-weight:700;letter-spacing:0.01em;font-size:${sz}px;font-family:${getComputedStyle(document.body).fontFamily}`;
+    probe.textContent = text;
+    document.body.appendChild(probe);
+    const w = probe.offsetWidth;
+    document.body.removeChild(probe);
+    return w;
+  }
+
+  // Find the visually widest word by measuring all unique words at a reference size
+  function findWidestWord(wordList) {
+    const REF = 64; // reference size for comparison
+    const seen = new Set();
+    let widest = '';
+    let widestW = 0;
+    // Batch: append all probes, read widths, remove
+    const container = document.createElement('div');
+    container.style.cssText = `position:absolute;top:-9999px;left:-9999px;visibility:hidden;font-weight:700;letter-spacing:0.01em;font-size:${REF}px;font-family:${getComputedStyle(document.body).fontFamily}`;
+    const spans = [];
+    const candidates = [];
+    for (const word of wordList) {
+      if (seen.has(word)) continue;
+      seen.add(word);
+      const span = document.createElement('span');
+      span.style.cssText = 'display:inline-block;white-space:nowrap';
+      span.textContent = word;
+      container.appendChild(span);
+      spans.push(span);
+      candidates.push(word);
+    }
+    document.body.appendChild(container);
+    for (let i = 0; i < spans.length; i++) {
+      const w = spans[i].offsetWidth;
+      if (w > widestW) { widestW = w; widest = candidates[i]; }
+    }
+    document.body.removeChild(container);
+    return widest;
+  }
+
+  // Required box width for a given font size, respecting ORP layout
+  function requiredBoxWidth(sz) {
+    const PAD = 24;
+    if (orpOn && (widestLeftTail || widestRightTail)) {
+      const leftW  = widestLeftTail  ? measureAt(widestLeftTail,  sz) : 0;
+      const rightW = widestRightTail ? measureAt(widestRightTail, sz) : 0;
+      const orpCharW = measureAt('m', sz); // orp char is always 1 char; use 'm' as safe upper bound
+      return 2 * Math.max(leftW, rightW) + orpCharW + PAD;
+    }
+    return longestWord ? measureAt(longestWord, sz) + PAD : sz * 6 + PAD;
+  }
+
+  // Find the largest font size at which the box fits within screen width
+  function computeMaxFontSize() {
+    const maxBoxWidth = window.innerWidth - 16;
+    if (!longestWord) return 200;
+    let lo = 5, hi = 400;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (requiredBoxWidth(mid) <= maxBoxWidth) lo = mid;
+      else hi = mid - 1;
+    }
+    return Math.max(5, lo);
+  }
+
+  function applyFont() {
+    const maxBoxWidth = window.innerWidth - 16;
+
+    const boxW = Math.min(maxBoxWidth, Math.max(100, requiredBoxWidth(fontSize)));
+    const wordZone = document.querySelector('.word-zone');
+    const zoneH = wordZone ? wordZone.clientHeight : 0;
+    const boxH = zoneH > 100
+      ? Math.round(Math.min(zoneH * 0.78, Math.max(fontSize * 2.8, zoneH * 0.5)))
+      : Math.max(40, Math.round(fontSize * 2.8));
+
+    wordBox.style.width  = boxW + 'px';
+    wordBox.style.height = boxH + 'px';
+
+    // apply font size to current word spans
+    wordBox.querySelectorAll('.w-left,.w-orp,.w-right,.w-plain').forEach(el => {
+      el.style.fontSize = fontSize + 'px';
+    });
+
+  }
+
+  // Detect if a word is RTL (Hebrew or Arabic)
+  function isRTL(word) {
+    return /[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\uFB1D-\uFB4F\uFB50-\uFDFF]/.test(word);
+  }
+
+  // ── ORP highlight ──
+  function orpIndex(word) {
+    // strip punctuation but keep letters (including Hebrew/Arabic)
+    const len = word.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\uFB1D-\uFDFF]/g, '').length || word.length;
+    if (len <= 1) return 0;
+    if (len <= 5) return 1;
+    if (len <= 9) return 2;
+    return 3;
+  }
+
+  function showWord() {
+    if (!words.length) return;
+    const w = words[index] || '';
+    // Paragraph break: show nothing (blank box during the pause)
+    if (w === PARA_BREAK) {
+      wordBox.innerHTML = '';
+      const pct = words.length > 1 ? (index / (words.length - 1)) * 100 : 100;
+      progressFill.style.width = pct + '%';
+      progressText.textContent = (index + 1) + ' / ' + words.length;
+      return;
+    }
+    const fs = fontSize + 'px';
+    // dir="rtl" on the box flips flex order AND makes text-align:end/start auto-mirror
+    wordBox.setAttribute('dir', isRTL(w) ? 'rtl' : 'ltr');
+    if (orpOn && w.length > 0) {
+      const oi = orpIndex(w);
+      const before = w.slice(0, oi);
+      const mid    = w.slice(oi, oi + 1);
+      const after  = w.slice(oi + 1);
+      wordBox.innerHTML =
+        `<span class="w-left"  style="font-size:${fs}">${escHtml(before)}</span>` +
+        `<span class="w-orp"   style="font-size:${fs}">${escHtml(mid)}</span>` +
+        `<span class="w-right" style="font-size:${fs}">${escHtml(after)}</span>`;
+    } else {
+      wordBox.innerHTML =
+        `<span class="w-plain" style="font-size:${fs}">${escHtml(w)}</span>`;
+    }
+    const pct = words.length > 1 ? (index / (words.length - 1)) * 100 : 100;
+    progressFill.style.width = pct + '%';
+    progressText.textContent = (index + 1) + ' / ' + words.length;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Playback ──
+  function msPerWord() { return 60000 / wpm; }
+
+  function pauseMultiplier(word) {
+    // Paragraph break sentinel — long pause
+    if (word === PARA_BREAK) return 3.5;
+
+    // Punctuation pauses
+    let base = 1;
+    if (/[.!?…]["'»)\]]*$/.test(word)) base = 2.6;
+    else if (/[;]["'»)\]]*$/.test(word)) base = 2.2;
+    else if (/[,]["'»)\]]*$/.test(word)) base = 1.9;
+
+    // Variable speed by word length (strip punctuation for length count)
+    const letters = word.replace(/[^a-zA-Z0-9\u0590-\u05FF\u0600-\u06FF]/g, '').length || word.length;
+    let lengthFactor = 1;
+    if (letters <= 3) lengthFactor = 0.75;
+    else if (letters >= 8) lengthFactor = 1.35;
+
+    return base * lengthFactor;
+  }
+
+  function startPlay() {
+    if (playing) return;
+    if (index >= words.length - 1) index = 0;
+    playing = true;
+    playPauseBtn.textContent = '⏸ Pause';
+    tick();
+  }
+
+  function tick() {
+    showWord();
+    if (index < words.length - 1) {
+      const delay = msPerWord() * pauseMultiplier(words[index]);
+      index++;
+      timer = setTimeout(tick, delay);
+    } else {
+      // reached end
+      playing = false;
+      playPauseBtn.textContent = '▶ Play';
+    }
+  }
+
+  function pause() {
+    playing = false;
+    clearTimeout(timer);
+    playPauseBtn.textContent = '▶ Play';
+  }
+
+  function togglePlay() {
+    if (playing) pause();
+    else startPlay();
+  }
+
+  function restart() {
+    pause();
+    index = 0;
+    showWord();
+  }
+
+  function skipBack() {
+    pause();
+    index = Math.max(0, index - 10);
+    showWord();
+  }
+
+  function skipFwd() {
+    pause();
+    index = Math.min(words.length - 1, index + 10);
+    showWord();
+  }
+
+  // ── Text processing ──
+  const PARA_BREAK = '\x00PARA\x00';
+
+  function loadText(text) {
+    // Preserve paragraph breaks as sentinel tokens
+    words = text
+      .split(/\n\s*\n+/)           // split on blank lines
+      .flatMap((para, i, arr) => {
+        const ws = para.split(/\s+/).filter(w => w.length > 0);
+        return i < arr.length - 1 ? [...ws, PARA_BREAK] : ws;
+      })
+      .filter(w => w.length > 0);
+    if (!words.length) { showError('No words found in the text.'); return false; }
+    const realWords = words.filter(w => w !== PARA_BREAK);
+    longestWord = findWidestWord(realWords);
+    // Also find widest ORP tails for ORP-mode box sizing
+    const lefts = [], rights = [];
+    const seenOrp = new Set();
+    for (const word of realWords) {
+      if (seenOrp.has(word)) continue;
+      seenOrp.add(word);
+      const oi = orpIndex(word);
+      lefts.push(word.slice(0, oi));
+      rights.push(word.slice(oi + 1));
+    }
+    widestLeftTail  = findWidestWord(lefts.filter(s => s.length > 0)) || '';
+    widestRightTail = findWidestWord(rights.filter(s => s.length > 0)) || '';
+    return true;
+  }
+
+  function showError(msg) { errorMsg.textContent = msg; }
+  function clearError() { errorMsg.textContent = ''; }
+
+  // ── Screen switching ──
+  function showReader() {
+    setupScreen.style.display = 'none';
+    readerScreen.classList.add('visible');
+    index = 0;
+    fontSize = computeMaxFontSize();
+    applyFont();
+    showWord();
+    // Re-apply after layout so word-zone clientHeight is known
+    requestAnimationFrame(() => { applyFont(); showWord(); });
+  }
+
+  function showSetup() {
+    pause();
+    readerScreen.classList.remove('visible');
+    setupScreen.style.display = '';
+  }
+
+  // ── Event listeners ──
+
+  // ORP toggle
+  orpToggles.forEach(b => b.addEventListener('click', () => { orpOn = !orpOn; applyOrp(); }));
+
+  // TXT upload
+  txtUpload.addEventListener('change', () => {
+    const file = txtUpload.files[0];
+    if (!file) return;
+    clearError();
+    const reader = new FileReader();
+    reader.onload = e => {
+      textInput.value = e.target.result;
+      startBtn.disabled = !textInput.value.trim();
+      fileNameEl.textContent = '📄 ' + file.name;
+    };
+    reader.onerror = () => showError('Could not read the file.');
+    reader.readAsText(file);
+    txtUpload.value = '';
+  });
+
+  // PDF upload
+  pdfUpload.addEventListener('change', async () => {
+    const file = pdfUpload.files[0];
+    if (!file) return;
+    clearError();
+    fileNameEl.textContent = '⏳ Extracting PDF…';
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        fullText += content.items.map(item => item.str).join(' ') + '\n';
+      }
+      textInput.value = fullText.trim();
+      startBtn.disabled = !textInput.value.trim();
+      fileNameEl.textContent = '📑 ' + file.name + ' (' + pdf.numPages + ' pages)';
+    } catch (err) {
+      showError('Could not read PDF: ' + err.message);
+      fileNameEl.textContent = '';
+    }
+    pdfUpload.value = '';
+  });
+
+  // Enable/disable start button based on textarea content
+  textInput.addEventListener('input', () => {
+    startBtn.disabled = !textInput.value.trim();
+  });
+
+  // Start
+  startBtn.addEventListener('click', () => {
+    clearError();
+    const text = textInput.value.trim();
+    if (!text) { showError('Please enter or upload some text first.'); return; }
+    if (!loadText(text)) return;
+    showReader();
+  });
+
+  // Back
+  backBtn.addEventListener('click', showSetup);
+
+  // Playback controls
+  playPauseBtn.addEventListener('click', togglePlay);
+  restartBtn.addEventListener('click', restart);
+  skipBackBtn.addEventListener('click', skipBack);
+  skipFwdBtn.addEventListener('click', skipFwd);
+
+  // WPM slider
+  wpmSlider.addEventListener('input', () => {
+    wpm = parseInt(wpmSlider.value);
+    wpmValue.textContent = wpm + ' WPM';
+    wpmDisplay.textContent = wpm + ' WPM';
+    localStorage.setItem('wpm', wpm);
+    if (playing) { clearTimeout(timer); tick(); } // restart tick with new speed
+  });
+
+
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', e => {
+    if (!readerScreen.classList.contains('visible')) return;
+    if (e.target === textInput) return;
+    if (e.key === ' ' || e.key === 'k') { e.preventDefault(); togglePlay(); }
+    if (e.key === 'ArrowLeft')  skipBack();
+    if (e.key === 'ArrowRight') skipFwd();
+    if (e.key === 'r') restart();
+  });
+
+  // ── Init ──
+  loadSettings();
+</script>
+</body>
+</html>
